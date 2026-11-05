@@ -64,6 +64,8 @@
             _boundVideoHandlers: null,
             _nextUnitPending: false,
             _chapterAdvanceTimes: 0,
+            _videoLoadTimer: null,
+            _videoLoadAttempts: 0,
             _cellData: {
                 cells: 0,
                 nCells: 0,
@@ -75,9 +77,11 @@
                 return this._cellData;
             },
             run() {
-                console.log("%c=== 学习通自动刷课脚本 V3 优化版启动 ===", "color:#4CAF50;font-size:16px;font-weight:bold");
+                console.log("%c=== 学习通自动刷课脚本 V3.3.1 启动 ===", "color:#4CAF50;font-size:16px;font-weight:bold");
                 this._nextUnitPending = false;
                 this._chapterAdvanceTimes = 0;
+                this._tryTimes = 0;
+                this._resetVideoLoadWait();
                 this._getTreeContainer();
                 this._initCellData();
                 this._videoEl = null;
@@ -92,6 +96,7 @@
                     return;
                 }
                 this._nextUnitPending = true;
+                this._resetVideoLoadWait();
                 this._clearCheckInterval();
                 console.log("%c=== 准备切换到下一小节 ===", "color:#2196F3;font-size:14px");
                 try {
@@ -200,13 +205,26 @@
             _guardLastTime: 0,
             _guardLastWallTs: 0,
             _guardLastResumeTs: 0,
+            _resetVideoLoadWait() {
+                if (this._videoLoadTimer) clearTimeout(this._videoLoadTimer);
+                this._videoLoadTimer = null;
+                this._videoLoadAttempts = 0;
+            },
+            _waitForVideo() {
+                if (this._videoLoadTimer) return true;
+                if (this._videoLoadAttempts >= this.configs.maxRetries) return false;
+                this._videoLoadAttempts++;
+                console.log(`%c播放器尚未就绪，等待加载 (${this._videoLoadAttempts}/${this.configs.maxRetries})`, 'color:#607D8B');
+                this._videoLoadTimer = setTimeout(() => {
+                    this._videoLoadTimer = null;
+                    this.play();
+                }, this.configs.retryInterval);
+                return true;
+            },
             async play() {
                 try {
                     const el = this._getVideoEl();
                     if (el == null) {
-                        if (this._currentStepTitle() === '视频') {
-                            throw new Error('视频组件尚未加载完成');
-                        }
                         if (this._advanceLearningStep()) {
                             console.log("%c当前不在视频页，已尝试切到下一学习步骤，2秒后重试", "color:#607D8B");
                             setTimeout(() => {
@@ -215,20 +233,24 @@
                             return;
                         }
                         if (this._isChapterTest()) {
+                            this._resetVideoLoadWait();
                             this._advanceChapterTest();
                             return;
                         }
+                        if (this._waitForVideo()) return;
                         this._isPlaying = false;
                         this._clearCheckInterval();
                         if (this.configs.autoAdvanceNoVideo) {
                             console.warn('%c当前小节未发现视频，按配置切换到下一小节', 'color:#FF9800');
                             this.nextUnit();
                         } else {
-                            console.warn('%c当前小节未发现视频或可识别的学习步骤，已安全停止。确认无需完成课件后，可执行 app.nextUnit()。', 'color:#FF9800');
+                            console.warn('%c等待后仍未发现可访问的课程视频，已停止。可执行 app.inspectPlayer() 查看播放器识别结果；不要直接跳过未完成的任务。', 'color:#FF9800');
+                            this.inspectPlayer();
                         }
                         return;
                     }
 
+                    this._resetVideoLoadWait();
                     this._isPlaying = true;
                     this._videoEventHandle();
                     el.playbackRate = this.configs.playbackRate;
@@ -317,6 +339,8 @@
                 this._stepNavigationBound = true;
 
                 const reenterVideoMode = () => {
+                    this._resetVideoLoadWait();
+                    this._tryTimes = 0;
                     this._videoEl = null;
                     this._isPlaying = false;
                     this._stepSwitchPending = true;
@@ -369,6 +393,8 @@
                 }
             },
             playCurrentIndex(nCell) {
+                this._resetVideoLoadWait();
+                this._tryTimes = 0;
                 this._nextUnitPending = false;
                 if (!nCell) {
                     const el = this._getTreeContainer();
@@ -439,38 +465,61 @@
                 }
                 return this._treeContainerEl;
             },
-            _getVideoEl() {
-                if (!this._videoEl) {
+            _scanPlayerDocuments() {
+                const videos = [];
+                const visited = new Set();
+                const blockedFrames = [];
+                let frameCount = 0;
+                const isVisible = (el) => el.isConnected !== false && el.getClientRects().length > 0;
+                const frameLabel = (frame) => {
                     try {
-                        const findVideo = (frame, depth) => {
-                            if (depth > 2) return null;
-                            const frameDocument = frame.contentDocument || frame.contentWindow?.document;
-                            if (!frameDocument) return null;
-                            const $frameDocument = $(frameDocument);
-                            const directVideo = $frameDocument.find('video#video_html5_api, video[id*="video_html5"]').get(0);
-                            if (directVideo) return directVideo;
-
-                            const nestedFrames = $frameDocument.find('iframe.ans-insertvideo-online, iframe[src*="video"]');
-                            for (const nestedFrame of nestedFrames.toArray()) {
-                                const nestedVideo = findVideo(nestedFrame, depth + 1);
-                                if (nestedVideo) return nestedVideo;
-                            }
-                            return null;
-                        };
-
-                        for (const frame of $('iframe').toArray()) {
-                            const video = findVideo(frame, 0);
-                            if (video) {
-                                this._videoEl = video;
-                                break;
-                            }
-                        }
-                    } catch (e) {
-                        console.error("获取视频元素失败:", e);
-                        return null;
+                        const url = new URL(frame.getAttribute('src') || 'about:blank', frame.ownerDocument.baseURI);
+                        return url.protocol === 'https:' || url.protocol === 'http:'
+                            ? `${url.origin}${url.pathname}` : url.protocol;
+                    } catch (_) {
+                        return '未知内嵌页面';
                     }
-                }
-                if (!this._videoEl) return null;
+                };
+                const visit = (doc, depth) => {
+                    if (!doc || depth > 8 || visited.has(doc)) return;
+                    visited.add(doc);
+                    for (const video of doc.querySelectorAll('video')) {
+                        if (isVisible(video) && typeof video.play === 'function') videos.push(video);
+                    }
+                    for (const frame of doc.querySelectorAll('iframe, frame')) {
+                        if (!isVisible(frame)) continue;
+                        frameCount++;
+                        try {
+                            const child = frame.contentDocument || frame.contentWindow?.document;
+                            if (child) visit(child, depth + 1);
+                            else blockedFrames.push(frameLabel(frame));
+                        } catch (_) {
+                            // An inaccessible frame must not prevent searching its siblings.
+                            blockedFrames.push(frameLabel(frame));
+                        }
+                    }
+                };
+                visit(document, 0);
+                return { videos, documentCount: visited.size, frameCount, blockedFrames };
+            },
+            inspectPlayer() {
+                const scan = this._scanPlayerDocuments();
+                const result = {
+                    step: this._currentStepTitle() || '未识别',
+                    accessibleDocuments: scan.documentCount,
+                    visibleFrames: scan.frameCount,
+                    visibleVideos: scan.videos.length,
+                    inaccessibleFrames: scan.blockedFrames,
+                };
+                console.log('播放器识别结果（地址已去除查询参数）:', result);
+                return result;
+            },
+            _getVideoEl() {
+                if (this._videoEl && this._videoEl.isConnected) return this._videoEl;
+                const { videos } = this._scanPlayerDocuments();
+                this._videoEl = videos.find((video) =>
+                    video.matches('video#video_html5_api, video[id*="video_html5"], video.vjs-tech')
+                ) || videos[0] || null;
                 return this._videoEl;
             },
             _videoEventHandle() {
@@ -549,6 +598,7 @@
             },
             destroy() {
                 this._isPlaying = false;
+                this._resetVideoLoadWait();
                 this._clearCheckInterval();
                 this._detachVideoEvents();
                 if (this._delayedNextUnitTimer) clearTimeout(this._delayedNextUnitTimer);

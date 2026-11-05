@@ -16,4 +16,5 @@ if (payload !== source) throw new Error('油猴脚本未由 v3_optimized.js 同�
 
 execFileSync(process.execPath, ['--check', sourcePath], { stdio: 'inherit' });
 execFileSync(process.execPath, ['--check', userScriptPath], { stdio: 'inherit' });
+execFileSync(process.execPath, [resolve(root, 'tests/player-discovery.mjs')], { stdio: 'inherit' });
 console.log('V3 source and userscript payload are synchronized and syntactically valid.');

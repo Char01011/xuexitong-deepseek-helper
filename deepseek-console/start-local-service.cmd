@@ -18,6 +18,11 @@ if not exist "deepseek-request.mjs" (
   echo Extract the entire ZIP before running this launcher.
   goto :failed
 )
+if not exist "build-userscript.mjs" (
+  echo Missing build-userscript.mjs.
+  echo Keep all files in the deepseek-console folder together.
+  goto :failed
+)
 if not exist "xuexitong-console.js" (
   echo Missing xuexitong-console.js.
   echo Keep this launcher, deepseek-local.mjs and xuexitong-console.js together.

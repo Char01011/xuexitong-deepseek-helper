@@ -1,158 +1,58 @@
-# 学习通自动刷课脚本 V3 稳定版
+# 学习通 DeepSeek 助手
 
-当前版本以 `v3_optimized.js` 为唯一源码，油猴版由构建脚本生成。它聚焦于稳定播放与课程导航：
+面向 Windows + Edge 的课程视频与章节练习助手。当前稳定版本 **V4.7.5**，提供油猴自动启动入口、本地 DeepSeek 转发服务和页面识题诊断。
 
-- 自动播放视频
-- 视频结束后自动切换到下一小节
-- 章节测验页面的受限跳转（最多尝试 3 次，防止循环）
-- 从“学习目标”步骤自动切到“视频”步骤
-- 手动点“2视频”页签后自动重新接管播放
+本项目基于 [chaolucky18/xuexitongScript](https://github.com/chaolucky18/xuexitongScript) 继续整理与改进。维护账号：**Char01011**。它是非官方社区项目，与学习通、DeepSeek、Tampermonkey 没有隶属关系。
 
-这版的目标是保持原模板的行为方式，不再额外叠加复杂的后台保活、通知、测试按钮等附加层，尽量减少冲突。
+## 第一次使用
 
-## DeepSeek 控制台练习版
+1. 获取完整项目包并全部解压。用浏览器打开根目录 **开始使用.html**，或阅读 **docs/index.html**。
+2. 安装 [Node.js 官网 LTS 版本](https://nodejs.org/en/download)、Edge 和 [Tampermonkey](https://www.tampermonkey.net/index.php?browser=edge)。准备自己的可用 DeepSeek API Key。
+3. 双击根目录 **START.cmd**；输入 API Key 后按 Enter，输入不回显。看到“本地服务已启动”后保持窗口打开。
+4. 用记事本打开 `deepseek-console/xuexitong-deepseek.user.js`，复制全文。
+5. 油猴管理面板 → 新建脚本 → 替换默认代码 → Ctrl+S。启用用户脚本权限、课程站点访问和该脚本；停用其他同时操作课程的脚本。
+6. 关闭 F12，刷新带左侧目录的课程页。右下角应出现 **学习通 DeepSeek V4.7.5**。
 
-仓库新增了独立的 [DeepSeek 控制台版](deepseek-console/README.md)，通过本地服务调用 DeepSeek API，识别章节练习题并辅助作答。原有 V3 脚本入口保持不变。
+**顺序要点：先启动服务，再复制生成的油猴文件。每次重启服务，都要把新文件全文重新保存到油猴，然后刷新课程页。** 不要单独移动 CMD；不要只下载一个脚本文件。
 
+## 支持与限制
 
-## 文件说明
+- 视频：默认静音、1 倍速；同页可访问视频依次处理，完成后进入下一步骤。
+- 题型：单选、多选、判断、一题多空的填空；支持普通输入控件和可确认已有实例的 UEditor/TinyMCE。
+- 流程：题量核对 → 每批 10 题顺序请求 → 全部答案校验 → 回填及回读 → 提交确认 → 等待成绩或完成标记 → 下一节。
+- 诊断：页面“查看识题诊断”可导出数量、题型、失败原因、编辑器状态，不包含题干正文和密钥。
+- 图片、简答、未知编辑器、受限 iframe、平台界面或接口变化不保证支持。模型可能答错，API 可能计费，首次使用请观察完整流程。
+- 题目和选项会发送给 DeepSeek。API Key 仅保存在本地服务进程内存；运行时临时令牌会写入本机生成的脚本。
 
-- [v3_optimized.js](v3_optimized.js)
-  控制台直接执行版本
-- [v3_optimized.user.js](v3_optimized.user.js)
-  Tampermonkey 油猴版本
-- [scripts/build-userscript.mjs](scripts/build-userscript.mjs)
-  根据控制台版本生成油猴版
+## 文档入口
 
-## 当前脚本行为
+| 文档 | 内容 |
+| --- | --- |
+| [网页指南](docs/index.html) | 从环境部署到日常运行，含交互检查清单和故障搜索 |
+| [技术路线详解](TECHNICAL_GUIDE.md) | 浏览器、DOM、异步状态、本地 API、模型数据格式和工程知识点 |
+| [修复过程](BUG_HISTORY.md) | 每类 bug 的现象、证据、原因、修复和验证边界 |
+| [GitHub 发布手册](GITHUB_PUBLISH.md) | Fork、提交、Release、Pages 和后续版本维护 |
+| [来源与授权](THIRD_PARTY_NOTICES.md) | 原项目来源、许可证待核实事项和新增内容的授权范围 |
+| [原 V3 说明](LEGACY_V3.md) | 不调用 DeepSeek 的历史视频脚本 |
 
-### 1. 学习目标页
+## 运行与本地检查
 
-如果当前小节先进入的是“学习目标”而不是视频页，脚本会尝试点击顶部的 `2视频` / `视频` 标签进入视频步骤。
-
-说明：
-- 这条路径已经按当前页面结构收紧，只走顶部视频标签，不再点击底部 `下一节` 按钮
-- 原因是底部按钮在当前页面里可能触发额外调试/暂停逻辑，稳定性较差
-
-### 2. 视频页
-
-进入视频页后，脚本会：
-
-- 识别 iframe 内的真实视频元素
-- 自动调用 `play()`
-- 如果播放被短暂中断，则尝试恢复播放
-- 如果普通播放失败，则尝试静音播放
-
-当前默认配置：
-
-```javascript
-configs: {
-    playbackRate: 1.5,
-    autoplay: true,
-    retryInterval: 2000,
-    maxRetries: 10,
-    videoCheckInterval: 1000,
-    autoAdvanceNoVideo: false,
-}
-```
-
-### 3. 视频结束后
-
-视频触发结束事件后，脚本会调用 `nextUnit()`，在课程目录树中定位到下一小节并点击进入。
-
-### 4. 章节测验
-
-如果当前不是视频而是“章节测验”页面，脚本会尝试点击：
-
-```javascript
-#prevNextFocusNext
-```
-
-以跳过当前测验步骤并继续后续流程。
-
-## 使用方法
-
-### 方法一：控制台执行
-
-1. 打开学习通课程播放页
-2. 按 `F12`
-3. 进入 `Console`
-4. 复制 [v3_optimized.js](v3_optimized.js) 全部内容
-5. 粘贴并执行
-
-首次执行后可用：
-
-```javascript
-app.run()
-app.nextUnit()
-```
-
-### 方法二：Tampermonkey
-
-1. 安装 Tampermonkey
-2. 导入 [v3_optimized.user.js](v3_optimized.user.js)
-3. 确认脚本已启用
-4. 刷新学习通播放页面
-
-## 已知说明
-
-### 0. 无视频或课件页面
-
-默认不会自动跳过无法识别的无视频页面，避免在课件未完成时反复触发“当前章节还有任务未完成”的平台提示。控制台会给出明确日志；确认当前节点无需处理后，可手动执行 `app.nextUnit()`。
-
-如果课程结构已确认安全，才可在控制台将 `app.configs.autoAdvanceNoVideo = true`，让脚本自动切换无视频小节。
-
-### 1. 为什么有时会看到 `AbortError`
-
-常见报错：
+普通使用者不需要安装 npm 依赖。维护者在项目根目录执行：
 
 ```text
-The play() request was interrupted by a call to pause()
+node deepseek-console/build-userscript.mjs
+node tests/deepseek-flow.mjs
+node tests/navigation-keeper.mjs
+node tests/local-service-startup.mjs
+node scripts/check-publication.mjs
 ```
 
-这通常不是视频坏了，而是：
+前三类检查合计 100 项行为检查，使用模拟页面、模拟 AI 响应和临时端口，不调用真实答题接口。它们验证错误路径与数据一致性，不能代替实际课程验收。V4.7.5 已收到本次 Edge 课程测试“可以顺畅运行”的用户反馈，不代表所有课程均兼容。
 
-- 页面从步骤页切到视频页时，播放器初始化会短暂停一下
-- 页面内部脚本会在加载过程中重置播放状态
-- 浏览器对媒体播放请求进行了短暂中断
+## 反馈问题
 
-脚本会优先尝试恢复播放，而不是立即判定失败。
+请附：脚本版本、浏览器及油猴版本、卡住步骤、状态框文字、识题诊断。网址只提供域名和问号前路径。不要上传 API Key、LOCAL_TOKEN、Cookie 或包含课程会话参数的完整地址。
 
-### 2. 为什么会出现重复日志
+## 授权状态
 
-如果同一页面反复粘贴执行脚本，会导致同一套监听和定时逻辑叠加，从而出现多次日志。
-
-建议：
-
-- 刷新页面后只执行一次
-- 如果使用油猴版，尽量不要再在控制台重复粘贴执行
-
-### 3. 为什么“静音播放成功”但一开始还能听到声音
-
-旧逻辑里曾经会在静音启动成功后恢复声音。当前建议使用持续静音方式，不再自动恢复。
-
-## 当前调试结论
-
-目前这版已经验证：
-
-- 顶部 `2视频` 标签可以程序化点击
-- 手动进入视频页后可以自动播放
-- 静音恢复链路可用
-
-目前重点保留的是稳定性，不再继续叠加额外功能。
-
-## 维护与验证
-
-修改 `v3_optimized.js` 后，执行：
-
-```bash
-node scripts/build-userscript.mjs
-node tests/verify-v3.mjs
-```
-
-第二条命令会验证两个入口的语法，并确认油猴脚本与唯一源码完全一致。
-
-
-## 免责声明
-
-本项目仅用于脚本调试、前端自动化研究和页面行为分析，请遵守目标平台的使用规定。
+公开可见和完整开源许可是两回事。当前原始下载包与上游主页未找到明确 LICENSE；沿用和衍生的浏览器脚本不应被直接重新声明为整体 MIT。新增网站、文档和明确列出的独立文件采用附加许可，具体见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和 [LICENSE-ADDITIONS.md](LICENSE-ADDITIONS.md)。
