@@ -2,6 +2,8 @@
 
 面向 Windows + Edge 的课程视频与章节练习助手。当前稳定版本 **V4.7.5**，提供油猴自动启动入口、本地 DeepSeek 转发服务和页面识题诊断。
 
+**[打开新手教程网站](https://char01011.github.io/xuexitong-deepseek-helper/)** · **[下载完整 V4.7.5 项目包](https://github.com/Char01011/xuexitong-deepseek-helper/releases/tag/v4.7.5)** · **[本次发布结果与后续维护](DELIVERY.md)**
+
 本项目基于 [chaolucky18/xuexitongScript](https://github.com/chaolucky18/xuexitongScript) 继续整理与改进。维护账号：**Char01011**。它是非官方社区项目，与学习通、DeepSeek、Tampermonkey 没有隶属关系。
 
 ## 第一次使用

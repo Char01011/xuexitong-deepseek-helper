@@ -1,0 +1,16 @@
+{
+  "version": "4.7.5",
+  "verified_at": "2026-11-05T13:40:48.546Z",
+  "repository": "https://github.com/Char01011/xuexitong-deepseek-helper",
+  "is_fork": true,
+  "release_commit": "ca1cbce859d7978365113b3239565a39e9d866b0",
+  "release_url": "https://github.com/Char01011/xuexitong-deepseek-helper/releases/tag/v4.7.5",
+  "pages_url": "https://char01011.github.io/xuexitong-deepseek-helper/",
+  "pages_status": "built",
+  "live_http_status": 200,
+  "behavior_checks": 100,
+  "verify_workflow_conclusion": "success",
+  "zip_bytes": 293727,
+  "zip_sha256": "57d135dc6c28ca859dc75568be5f5910495bbf93c2a2abaf8e3fa3b93e9d72bc",
+  "license_scope": "Added materials have a scoped license; upstream-derived browser code license remains unconfirmed."
+}
